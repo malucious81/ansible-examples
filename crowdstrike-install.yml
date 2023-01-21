@@ -38,7 +38,7 @@
       when: ansible_facts['distribution_major_version'] == "8"
 
     - name: Set sensor Customer ID (CID)
-      shell: /opt/CrowdStrike/falconctl -s --cid=4A420B0F18B449618367714B5BF2918B-D5
+      shell: /opt/CrowdStrike/falconctl -s --cid=customerID
 
     - name: Start Falcon Sensor
       shell: systemctl enable falcon-sensor --now

@@ -29,7 +29,7 @@
       shell: printf "\nFIPS=1" >> /opt/splunkforwarder/etc/splunk-launch.conf
 
     - name: Add Receiving Indexer
-      shell: /opt/splunkforwarder/bin/splunk set deploy-poll 10.230.152.85:8089 --accept-license --no-prompt --answer-yes --gen-and-print-passwd
+      shell: /opt/splunkforwarder/bin/splunk set deploy-poll 0.0.0.0:8089 --accept-license --no-prompt --answer-yes --gen-and-print-passwd
 
 
     - name: Set splunk to SystemD managemnet
