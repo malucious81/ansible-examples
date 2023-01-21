@@ -1,0 +1,81 @@
+---
+- name: Copy and Install Splunk Universal Forwarders
+  hosts: "{{ host }}"
+  vars_files:
+    - lock.yml
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Copy RPM to TMP
+      copy:
+        src: myfiles/splunkforwarder-8.2.1.rpm
+        dest: /tmp/splforward/
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install RPM
+      shell: yum -y localinstall --nogpgcheck /tmp/splforward/splunkforwarder-8.2.1.rpm
+      async: 2592000
+      poll: 5
+      
+    - name: Install auditD
+      yum:
+        name: audit
+        state: installed
+
+    - name: Enable FIPS for splunk
+      shell: printf "\nFIPS=1" >> /opt/splunkforwarder/etc/splunk-launch.conf
+
+    - name: Add Receiving Indexer
+      shell: /opt/splunkforwarder/bin/splunk set deploy-poll 10.230.152.85:8089 --accept-license --no-prompt --answer-yes --gen-and-print-passwd
+
+
+    - name: Set splunk to SystemD managemnet
+      shell: /opt/splunkforwarder/bin/splunk enable boot-start -systemd-managed 1 -systemd-unit-file-name splunk -user splunk
+
+    - name: Edit Logrotate messages
+      lineinfile:
+        path: /etc/logrotate.d/syslog
+        insertbefore: 'endscript'
+        line: '        /usr/bin/setfacl -m u:splunk:rX /var/log/messages'
+
+    - name: Edit Logrotate secure
+      lineinfile:
+        path: /etc/logrotate.d/syslog
+        insertbefore: 'endscript'
+        line: '        /usr/bin/setfacl -m u:splunk:rX /var/log/secure'
+
+    - name: Edit Logrotate audit
+      lineinfile:
+        path: /etc/logrotate.d/syslog
+        insertbefore: 'endscript'
+        line: '        /usr/bin/setfacl -m u:splunk:rX /var/log/audit/audit.log'
+
+    - name: Create audit rules splunk fiile
+      file:
+        path: /etc/audit/rules.d/50-splunk.rules
+        state: touch
+
+    - name: Add audit rules
+      blockinfile:
+        path: /etc/audit/rules.d/50-splunk.rules
+        block: |
+          -w /opt/splunk/etc/passwd -p wa -k identity
+          -w /opt/splunkforwarder/etc/passwd -p wa -k identity
+
+    - name: Edit audit file
+      shell: sed -i '/log_group/s/= .*/= splunk/' /etc/audit/auditd.conf     
+
+    - name: Set permissions on /opt/splunkforwarder
+      shell: chown splunk:splunk /opt/splunkforwarder -R
+
+    - name: Restart auditd
+      command: /usr/sbin/service auditd restart 
+
+    - name: Start Splunk
+      service:
+        name: splunk
+        state: started
+

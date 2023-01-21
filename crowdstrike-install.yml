@@ -1,0 +1,47 @@
+---
+- name: Copy and Install Crowdstrike sensor
+  hosts: "{{ host }}"
+  vars_files:
+    - lock.yml
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Copy RPM to Root Home
+      copy:
+        src: myfiles/falcon-sensor-6.33.0-13003.el7.x86_64.rpm
+        dest: /root/crowdstrike/
+        owner: root
+        group: root
+        mode: '0655'
+      when: ansible_facts['distribution_major_version'] == "7"
+
+    - name: Install RPM
+      shell: yum -y localinstall --nogpgcheck /root/crowdstrike/falcon-sensor-6.33.0-13003.el7.x86_64.rpm 
+      async: 2592000
+      poll: 5
+      when: ansible_facts['distribution_major_version'] == "7"  
+
+    - name: Copy RPM to Root Home
+      copy:
+        src: myfiles/falcon-sensor-6.33.0-13003.el8.x86_64.rpm
+        dest: /root/crowdstrike/
+        owner: root
+        group: root
+        mode: '0655'
+      when: ansible_facts['distribution_major_version'] == "8"
+
+    - name: Install RPM
+      shell: dnf -y install --nogpgcheck /root/crowdstrike/falcon-sensor-6.33.0-13003.el8.x86_64.rpm
+      async: 2592000
+      poll:  5
+      when: ansible_facts['distribution_major_version'] == "8"
+
+    - name: Set sensor Customer ID (CID)
+      shell: /opt/CrowdStrike/falconctl -s --cid=4A420B0F18B449618367714B5BF2918B-D5
+
+    - name: Start Falcon Sensor
+      shell: systemctl enable falcon-sensor --now
+
+    - name: Remove Installer
+      shell: rm -rf /root/crowdstrike
