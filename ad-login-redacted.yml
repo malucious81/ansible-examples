@@ -1,0 +1,145 @@
+---
+  - name: Join domain for AD login
+    hosts: "{{ host }}"
+    gather_facts: true
+    vars:
+      admin_sudo: '"##########"        ALL=(ALL)       ALL'
+      dmz_sudo: '"##########"        ALL=(ALL)       ALL'
+      train_sudo: '"##########"   		ALL=(ALL)		ALL'
+    vars_files:
+      - lock.yml
+    vars_prompt:
+      - name: domain
+        prompt: What is the domain?
+        private: no
+      - name: elevated_user
+        prompt: What elevated user to join domain?
+        private: no
+      - name: elevated_pass
+        prompt: What is the password?
+        private: yes
+    become: true
+    become_method: sudo
+
+    tasks:
+  
+      - name: Make sure SSSD and RealmD are installed
+        package:
+          name:
+            - realmd
+            - sssd
+            - oddjob
+            - oddjob-mkhomedir
+            - adcli
+            - samba-common
+            - samba-common-tools
+            - krb5-workstation
+            - openldap-clients
+            - policycoreutils
+            - python3-pexpect
+          state: present
+        when: ansible_facts['distribution_major_version'] == "8"
+
+      - name: Install Pexpect for RHEL7
+        package:
+          name:
+            - realmd
+            - sssd
+            - oddjob
+            - oddjob-mkhomedir
+            - adcli
+            - samba-common
+            - samba-common-tools
+            - krb5-workstation
+            - openldap-clients
+            - policycoreutils
+            - python-pip
+          state: present
+        when: ansible_facts['distribution_major_version'] == "7"
+
+      - name: Install Pexpect via python 
+        shell: pip install pexpect
+        when: ansible_facts['distribution_major_version'] == "7"
+
+#      - name: Start SSSD
+#        service:
+#          name: sssd
+#          state: started
+        
+      - name: Join domain
+        expect: 
+          command: /bin/bash -c "realm join -U {{ elevated_user }} {{ domain }}"
+          responses:
+            Password for *: "{{ elevated_pass }}"
+
+
+      - name: Edit Allow groups in /etc/sssd/sssd.conf
+        shell: sed -i '/access_provider/s/= .*/= simple/' /etc/sssd/sssd.conf
+
+
+      - name: Edit /etc/sssd/sssd.conf to limit AD login to Linux wheel users
+        lineinfile:
+          path: /etc/sssd/sssd.conf
+          line: simple_allow_groups = Linuxwheel (P)
+          state: present
+        when:  domain  == "##########"
+
+      - name: Edit /etc/sssd/sssd.conf to limit AD login to Linux wheel users
+        lineinfile:
+          path: /etc/sssd/sssd.conf
+          line: simple_allow_groups = LinuxWheelusers (P)
+          state: present
+        when:  domain  == "##########"
+
+      - name: Edit /etc/sssd/sssd.conf to limit AD login to Linux wheel users
+        lineinfile:
+          path: /etc/sssd/sssd.conf
+          line: simple_allow_groups = LinuxWheel
+          state: present
+        when:  domain  == "##########"
+
+      - name: Make sure default search domain is set.
+        lineinfile:
+          path: /etc/sssd/sssd.conf
+          insertafter: '^\[sssd\]'
+          line: default_domain_suffix = {{ domain }}
+          state: present
+
+      - name: Create sudoers config file
+        file:
+          path: /etc/sudoers.d/ad_wheel
+          state: touch
+          owner: root
+          group: root
+          mode: 644
+
+      - name: Sudoers files
+        lineinfile:
+          path: /etc/sudoers.d/ad_wheel
+          line: "{{ admin_sudo }}"
+        when:  domain == "##########" 
+
+      - name: Sudoers files
+        lineinfile:
+          path: /etc/sudoers.d/ad_wheel
+          line: "{{ dmz_sudo }}"
+        when:  domain  == "##########" 
+
+      - name: Sudoers files
+        lineinfile:
+          path: /etc/sudoers.d/ad_wheel
+          line: "{{ train_sudo }}"
+        when:  domain  == "##########" 
+
+      - name: Restart SSSD
+        service:
+          name: sssd
+          state: restarted
+
+      - name: Test AD auth
+        shell: id {{ elevated_user }}
+        register: ad_auth
+
+      - name: Print AD auth
+        debug:
+          var: ad_auth.stdout
